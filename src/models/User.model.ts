@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 
 export const AVAILABLE_PERMISSIONS = [
   'staff.manage',
+  'content.manage',
   'donations.read',
   'donations.manage',
   'news.create',
@@ -21,6 +22,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
   admin: ['*'],
   manager: [
     'staff.manage',
+    'content.manage',
     'donations.read',
     'donations.manage',
     'news.create',
@@ -31,7 +33,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'dashboard.read',
   ],
   donations_manager: ['donations.read', 'donations.manage', 'dashboard.read'],
-  content_editor: ['news.create', 'news.update', 'news.delete', 'dashboard.read'],
+  content_editor: ['content.manage', 'news.create', 'news.update', 'news.delete', 'dashboard.read'],
   beneficiary_manager: ['beneficiaries.manage', 'dashboard.read'],
 } as const satisfies Record<string, readonly UserPermission[]>;
 

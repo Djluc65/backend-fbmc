@@ -13,15 +13,33 @@ import campaignRoutes from './routes/campaign.routes.js';
 import donationRoutes from './routes/donation.routes.js';
 import newsRoutes from './routes/news.routes.js';
 import beneficiaryRoutes from './routes/beneficiary.routes.js';
+import siteContentRoutes from './routes/site-content.routes.js';
 
 // Initialiser l'app
 const app = express();
 const PORT = process.env.PORT || 5000;
+const defaultAllowedOrigins = ['http://localhost:5173'];
+const configuredOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...configuredOrigins])];
 
 // Middlewares
 app.use(helmet()); // Sécuriser les headers HTTP
 app.use(cors({
-  origin: 'http://localhost:5173', // URL du frontend
+  origin: (origin, callback) => {
+    // Permet les appels sans Origin (healthchecks, curl, Postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origine non autorisée par CORS: ${origin}`));
+  },
   credentials: true,
 }));
 app.use(morgan('dev')); // Log des requêtes
@@ -44,6 +62,7 @@ app.use('/api/campaigns', campaignRoutes);
 app.use('/api/donations', donationRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/beneficiaries', beneficiaryRoutes);
+app.use('/api/site-content', siteContentRoutes);
 
 // Route de test
 app.get('/', (_req, res) => {

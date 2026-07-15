@@ -1,7 +1,13 @@
 import express from 'express';
 import User from '../models/User.model.js';
 import { AuthRequest, protect } from '../middleware/auth.middleware.js';
-import { generateAccessToken, generateRefreshToken, sendTokens } from '../utils/generateToken.js';
+import {
+  clearAuthCookies,
+  generateAccessToken,
+  generateRefreshToken,
+  getAccessTokenCookieOptions,
+  sendTokens,
+} from '../utils/generateToken.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
@@ -129,13 +135,8 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ message: 'Non autorisé' });
     }
     const newAccessToken = generateAccessToken(getUserId(user));
-    res.cookie('accessToken', newAccessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-      maxAge: 15 * 60 * 1000,
-    });
-    return res.json({ message: 'Token rafraîchi' });
+    res.cookie('accessToken', newAccessToken, getAccessTokenCookieOptions());
+    return res.json({ message: 'Token rafraîchi', accessToken: newAccessToken });
   } catch (error) {
     return res.status(401).json({ message: 'Token invalide' });
   }
@@ -145,8 +146,7 @@ router.post('/refresh', async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Private
 router.post('/logout', (_req, res) => {
-  res.clearCookie('accessToken');
-  res.clearCookie('refreshToken');
+  clearAuthCookies(res);
   return res.json({ message: 'Déconnexion réussie' });
 });
 
