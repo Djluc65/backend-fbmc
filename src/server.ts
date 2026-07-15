@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+import path from 'node:path';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.routes.js';
 import staffRoutes from './routes/staff.routes.js';
@@ -18,6 +19,7 @@ import siteContentRoutes from './routes/site-content.routes.js';
 // Initialiser l'app
 const app = express();
 const PORT = process.env.PORT || 5000;
+const uploadsDirectory = path.resolve(process.cwd(), 'uploads');
 const defaultAllowedOrigins = ['http://localhost:5173'];
 const configuredOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '')
   .split(',')
@@ -26,7 +28,13 @@ const configuredOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL
 const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...configuredOrigins])];
 
 // Middlewares
-app.use(helmet()); // Sécuriser les headers HTTP
+app.set('trust proxy', 1);
+app.use(
+  helmet({
+    // Autorise le frontend et le backend à partager les images uploadées
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+); // Sécuriser les headers HTTP
 app.use(cors({
   origin: (origin, callback) => {
     // Permet les appels sans Origin (healthchecks, curl, Postman)
@@ -46,6 +54,7 @@ app.use(morgan('dev')); // Log des requêtes
 app.use(express.json({ limit: '10kb' })); // Parsing du corps des requêtes JSON
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser()); // Parsing des cookies
+app.use('/uploads', express.static(uploadsDirectory));
 
 // Limiteur de débit
 const limiter = rateLimit({

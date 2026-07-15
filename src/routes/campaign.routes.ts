@@ -1,13 +1,15 @@
 import express from 'express';
+import multer from 'multer';
 import Campaign from '../models/Campaign.model.js';
 import { AuthRequest, protect, authorizePermissions } from '../middleware/auth.middleware.js';
+import { buildUploadedFileUrl, imageUpload } from '../utils/upload.js';
 
 const router = express.Router();
 
 // @desc    Obtenir toutes les campagnes
 // @route   GET /api/campaigns
 // @access  Public
-router.get('/', async (req, res) => {
+router.get('/', async (_req, res) => {
   try {
     const campaigns = await Campaign.find().sort({ createdAt: -1 });
     res.json(campaigns);
@@ -42,6 +44,43 @@ router.post('/', protect, authorizePermissions('campaigns.manage'), async (req: 
   } catch (error) {
     res.status(400).json({ message: 'Données invalides', error });
   }
+});
+
+// @desc    Téléverser une image de campagne
+// @route   POST /api/campaigns/upload
+// @access  Private
+router.post('/upload', protect, authorizePermissions('campaigns.manage'), (req, res) => {
+  imageUpload.single('image')(req, res, (error: unknown) => {
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          message: 'Le fichier dépasse la taille maximale autorisée de 5 Mo.',
+        });
+      }
+
+      return res.status(400).json({
+        message: 'Veuillez téléverser une image valide au format JPG, PNG, WEBP, GIF ou SVG.',
+      });
+    }
+
+    if (error) {
+      return res.status(400).json({
+        message: 'Impossible de téléverser ce fichier.',
+      });
+    }
+
+    const uploadedFile = req.file;
+
+    if (!uploadedFile) {
+      return res.status(400).json({ message: 'Aucun fichier image reçu.' });
+    }
+
+    return res.status(201).json({
+      message: 'Image de campagne téléversée avec succès.',
+      fileName: uploadedFile.filename,
+      url: buildUploadedFileUrl(req, uploadedFile.filename),
+    });
+  });
 });
 
 // @desc    Mettre à jour une campagne

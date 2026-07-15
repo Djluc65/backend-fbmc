@@ -1,6 +1,8 @@
 import express from 'express';
+import multer from 'multer';
 import News from '../models/News.model.js';
 import { AuthRequest, protect, authorizePermissions } from '../middleware/auth.middleware.js';
+import { buildUploadedFileUrl, imageUpload } from '../utils/upload.js';
 
 const router = express.Router();
 
@@ -72,6 +74,48 @@ router.post('/', protect, authorizePermissions('news.create'), async (req: AuthR
     res.status(400).json({ message: 'Données invalides', error });
   }
 });
+
+// @desc    Téléverser une image de publication
+// @route   POST /api/news/upload
+// @access  Private
+router.post(
+  '/upload',
+  protect,
+  authorizePermissions('news.create', 'news.update'),
+  (req, res) => {
+    imageUpload.single('image')(req, res, (error: unknown) => {
+      if (error instanceof multer.MulterError) {
+        if (error.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            message: 'Le fichier dépasse la taille maximale autorisée de 5 Mo.',
+          });
+        }
+
+        return res.status(400).json({
+          message: 'Veuillez téléverser une image valide au format JPG, PNG, WEBP, GIF ou SVG.',
+        });
+      }
+
+      if (error) {
+        return res.status(400).json({
+          message: 'Impossible de téléverser ce fichier.',
+        });
+      }
+
+      const uploadedFile = req.file;
+
+      if (!uploadedFile) {
+        return res.status(400).json({ message: 'Aucun fichier image reçu.' });
+      }
+
+      return res.status(201).json({
+        message: 'Image de publication téléversée avec succès.',
+        fileName: uploadedFile.filename,
+        url: buildUploadedFileUrl(req, uploadedFile.filename),
+      });
+    });
+  }
+);
 
 // @desc    Mettre à jour une actualité
 // @route   PUT /api/news/:id
