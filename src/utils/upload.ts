@@ -3,12 +3,9 @@ import path from 'node:path';
 import type { Request } from 'express';
 import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
+import { ensureUploadsDirectory, getUploadsDirectory } from './uploads-directory.js';
 
-const uploadsDirectory = path.resolve(process.cwd(), 'uploads');
-
-if (!fs.existsSync(uploadsDirectory)) {
-  fs.mkdirSync(uploadsDirectory, { recursive: true });
-}
+const uploadsDirectory = getUploadsDirectory();
 
 const allowedImageMimeTypes = new Set([
   'image/jpeg',
@@ -190,7 +187,8 @@ export const storeUploadedImage = async (req: Request, file: Express.Multer.File
     };
   }
 
-  await fs.promises.writeFile(path.resolve(uploadsDirectory, fileName), file.buffer);
+  const localUploadsDirectory = await ensureUploadsDirectory();
+  await fs.promises.writeFile(path.resolve(localUploadsDirectory, fileName), file.buffer);
 
   return {
     fileName,
@@ -219,7 +217,8 @@ export const storeUploadedProof = async (req: Request, file: Express.Multer.File
     };
   }
 
-  await fs.promises.writeFile(path.resolve(uploadsDirectory, fileName), file.buffer);
+  const localUploadsDirectory = await ensureUploadsDirectory();
+  await fs.promises.writeFile(path.resolve(localUploadsDirectory, fileName), file.buffer);
 
   return {
     fileName,

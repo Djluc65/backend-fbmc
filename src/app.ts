@@ -7,7 +7,6 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
-import path from 'node:path';
 import authRoutes from './routes/auth.routes.js';
 import staffRoutes from './routes/staff.routes.js';
 import campaignRoutes from './routes/campaign.routes.js';
@@ -17,9 +16,10 @@ import siteContentRoutes from './routes/site-content.routes.js';
 import userRoutes from './routes/user.routes.js';
 import moduleDonationRoutes from './modules/donations/donation.routes.js';
 import paymentRoutes from './modules/payments/payment.routes.js';
+import { getUploadsDirectory } from './utils/uploads-directory.js';
 
 const app = express();
-const uploadsDirectory = path.resolve(process.cwd(), 'uploads');
+const uploadsDirectory = getUploadsDirectory();
 const defaultAllowedOrigins = ['http://localhost:5173'];
 const configuredOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL || '')
   .split(',')
