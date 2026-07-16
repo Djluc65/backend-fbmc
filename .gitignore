@@ -4,3 +4,5 @@ dist/
 uploads/
 *.tsbuildinfo
 .DS_Store
+.vercel
+.env*

@@ -3,7 +3,7 @@ import multer from 'multer';
 import SiteContent from '../models/SiteContent.model.js';
 import { defaultSiteContent } from '../content/defaultSiteContent.js';
 import { AuthRequest, authorizePermissions, protect } from '../middleware/auth.middleware.js';
-import { buildUploadedFileUrl, imageUpload } from '../utils/upload.js';
+import { imageUpload, storeUploadedImage } from '../utils/upload.js';
 
 const router = express.Router();
 
@@ -58,7 +58,7 @@ router.post(
   protect,
   authorizePermissions('content.manage'),
   (req, res) => {
-    imageUpload.single('image')(req, res, (error: unknown) => {
+    imageUpload.single('image')(req, res, async (error: unknown) => {
       if (error instanceof multer.MulterError) {
         if (error.code === 'LIMIT_FILE_SIZE') {
           return res.status(400).json({
@@ -83,11 +83,21 @@ router.post(
         return res.status(400).json({ message: 'Aucun fichier image reçu.' });
       }
 
-      return res.status(201).json({
-        message: 'Image téléversée avec succès.',
-        fileName: uploadedFile.filename,
-        url: buildUploadedFileUrl(req, uploadedFile.filename),
-      });
+      try {
+        const storedImage = await storeUploadedImage(req, uploadedFile);
+
+        return res.status(201).json({
+          message: 'Image téléversée avec succès.',
+          fileName: storedImage.fileName,
+          url: storedImage.url,
+          storageProvider: storedImage.storageProvider,
+        });
+      } catch (uploadError) {
+        return res.status(500).json({
+          message: "Impossible d'enregistrer l'image téléversée.",
+          error: uploadError,
+        });
+      }
     });
   }
 );

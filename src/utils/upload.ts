@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Request } from 'express';
+import { v2 as cloudinary } from 'cloudinary';
 import multer from 'multer';
 
 const uploadsDirectory = path.resolve(process.cwd(), 'uploads');
@@ -25,6 +26,23 @@ const extensionByMimeType: Record<string, string> = {
   'image/svg+xml': '.svg',
 };
 
+const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
+const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY?.trim();
+const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+const cloudinaryBaseFolder = process.env.CLOUDINARY_FOLDER?.trim();
+const isCloudinaryConfigured = Boolean(
+  cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret
+);
+
+if (isCloudinaryConfigured) {
+  cloudinary.config({
+    cloud_name: cloudinaryCloudName,
+    api_key: cloudinaryApiKey,
+    api_secret: cloudinaryApiSecret,
+    secure: true,
+  });
+}
+
 const sanitizeSegment = (value: string) =>
   value
     .toLowerCase()
@@ -34,23 +52,26 @@ const sanitizeSegment = (value: string) =>
     .replace(/^-+|-+$/g, '')
     .slice(0, 40);
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, callback) => {
-    callback(null, uploadsDirectory);
-  },
-  filename: (req, file, callback) => {
-    const folder = typeof req.body.folder === 'string' ? req.body.folder : 'site';
-    const safeFolder = sanitizeSegment(folder) || 'site';
-    const extension = extensionByMimeType[file.mimetype] ?? path.extname(file.originalname) ?? '.bin';
-    const baseName = sanitizeSegment(path.parse(file.originalname).name) || 'image';
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+const getSafeFolder = (req: Request) => {
+  const folder = typeof req.body.folder === 'string' ? req.body.folder : 'site';
 
-    callback(null, `${safeFolder}-${baseName}-${uniqueSuffix}${extension}`);
-  },
-});
+  return sanitizeSegment(folder) || 'site';
+};
+
+const createStoredFilename = (
+  req: Request,
+  file: Pick<Express.Multer.File, 'mimetype' | 'originalname'>
+) => {
+  const safeFolder = getSafeFolder(req);
+  const extension = extensionByMimeType[file.mimetype] ?? path.extname(file.originalname) ?? '.bin';
+  const baseName = sanitizeSegment(path.parse(file.originalname).name) || 'image';
+  const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+
+  return `${safeFolder}-${baseName}-${uniqueSuffix}${extension}`;
+};
 
 export const imageUpload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024,
   },
@@ -63,6 +84,63 @@ export const imageUpload = multer({
     callback(null, true);
   },
 });
+
+const uploadBufferToCloudinary = (
+  fileBuffer: Buffer,
+  options: {
+    folder?: string;
+    publicId: string;
+  }
+) =>
+  new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: options.folder,
+        public_id: options.publicId,
+        resource_type: 'image',
+      },
+      (error, result) => {
+        if (error || !result) {
+          reject(error ?? new Error('Upload Cloudinary impossible'));
+          return;
+        }
+
+        resolve({
+          secure_url: result.secure_url,
+          public_id: result.public_id,
+        });
+      }
+    );
+
+    uploadStream.end(fileBuffer);
+  });
+
+export const storeUploadedImage = async (req: Request, file: Express.Multer.File) => {
+  const fileName = createStoredFilename(req, file);
+
+  if (isCloudinaryConfigured) {
+    const publicId = path.parse(fileName).name;
+    const folder = [cloudinaryBaseFolder, getSafeFolder(req)].filter(Boolean).join('/');
+    const result = await uploadBufferToCloudinary(file.buffer, {
+      folder: folder || undefined,
+      publicId,
+    });
+
+    return {
+      fileName: result.public_id,
+      url: result.secure_url,
+      storageProvider: 'cloudinary' as const,
+    };
+  }
+
+  await fs.promises.writeFile(path.resolve(uploadsDirectory, fileName), file.buffer);
+
+  return {
+    fileName,
+    url: buildUploadedFileUrl(req, fileName),
+    storageProvider: 'local' as const,
+  };
+};
 
 export const buildUploadedFileUrl = (req: Request, filename: string) => {
   const configuredBaseUrl = process.env.PUBLIC_BACKEND_URL?.trim().replace(/\/$/, '');
