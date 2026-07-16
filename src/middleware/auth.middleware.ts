@@ -31,6 +31,28 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
   }
 };
 
+export const optionalAuth = async (req: AuthRequest, _res: Response, next: NextFunction) => {
+  try {
+    const token =
+      req.cookies.accessToken ||
+      (req.headers.authorization &&
+        req.headers.authorization.startsWith('Bearer') &&
+        req.headers.authorization.split(' ')[1]);
+
+    if (!token) {
+      req.user = null;
+      return next();
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string) as { userId?: string };
+    req.user = decoded.userId ? await User.findById(decoded.userId).select('-password') : null;
+    return next();
+  } catch (_error) {
+    req.user = null;
+    return next();
+  }
+};
+
 const getEffectivePermissions = (user: IUser): string[] => {
   const rolePermissions = DEFAULT_ROLE_PERMISSIONS[user.role as UserRole] ?? [];
   return [...new Set([...(rolePermissions || []), ...(user.permissions || [])])];

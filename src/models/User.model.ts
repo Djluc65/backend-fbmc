@@ -19,6 +19,7 @@ export type UserPermission = (typeof AVAILABLE_PERMISSIONS)[number] | '*';
 export const DEFAULT_ROLE_PERMISSIONS = {
   user: [],
   benefactor: ['dashboard.read'],
+  super_admin: ['*'],
   admin: ['*'],
   manager: [
     'staff.manage',
@@ -32,6 +33,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     'beneficiaries.manage',
     'dashboard.read',
   ],
+  finance_manager: ['donations.read', 'donations.manage', 'dashboard.read'],
   donations_manager: ['donations.read', 'donations.manage', 'dashboard.read'],
   content_editor: ['content.manage', 'news.create', 'news.update', 'news.delete', 'dashboard.read'],
   beneficiary_manager: ['beneficiaries.manage', 'dashboard.read'],

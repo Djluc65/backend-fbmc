@@ -5,16 +5,20 @@ import { AuthRequest, authorizePermissions, protect } from '../middleware/auth.m
 const router = express.Router();
 
 const STAFF_ROLES: UserRole[] = [
+  'super_admin',
   'admin',
   'manager',
+  'finance_manager',
   'donations_manager',
   'content_editor',
   'beneficiary_manager',
 ];
 
 const manageableRolesByCreator: Record<UserRole, UserRole[]> = {
-  admin: STAFF_ROLES,
-  manager: ['donations_manager', 'content_editor', 'beneficiary_manager'],
+  super_admin: STAFF_ROLES,
+  admin: ['manager', 'finance_manager', 'donations_manager', 'content_editor', 'beneficiary_manager'],
+  manager: ['finance_manager', 'donations_manager', 'content_editor', 'beneficiary_manager'],
+  finance_manager: [],
   donations_manager: [],
   content_editor: [],
   beneficiary_manager: [],
@@ -60,7 +64,7 @@ router.get('/roles', protect, authorizePermissions('staff.manage'), async (_req,
 router.get('/', protect, authorizePermissions('staff.manage'), async (req: AuthRequest, res) => {
   try {
     const query =
-      req.user?.role === 'admin'
+      req.user?.role === 'super_admin'
         ? { role: { $in: STAFF_ROLES } }
         : { role: { $in: manageableRolesByCreator[req.user!.role] } };
 

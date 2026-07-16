@@ -11,10 +11,12 @@ import path from 'node:path';
 import authRoutes from './routes/auth.routes.js';
 import staffRoutes from './routes/staff.routes.js';
 import campaignRoutes from './routes/campaign.routes.js';
-import donationRoutes from './routes/donation.routes.js';
 import newsRoutes from './routes/news.routes.js';
 import beneficiaryRoutes from './routes/beneficiary.routes.js';
 import siteContentRoutes from './routes/site-content.routes.js';
+import userRoutes from './routes/user.routes.js';
+import moduleDonationRoutes from './modules/donations/donation.routes.js';
+import paymentRoutes from './modules/payments/payment.routes.js';
 
 const app = express();
 const uploadsDirectory = path.resolve(process.cwd(), 'uploads');
@@ -63,10 +65,12 @@ app.use('/api/', limiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/staff', staffRoutes);
 app.use('/api/campaigns', campaignRoutes);
-app.use('/api/donations', donationRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/beneficiaries', beneficiaryRoutes);
 app.use('/api/site-content', siteContentRoutes);
+app.use('/api', moduleDonationRoutes);
+app.use('/api', paymentRoutes);
+app.use('/api/users', userRoutes);
 
 app.get('/', (_req, res) => {
   res.json({

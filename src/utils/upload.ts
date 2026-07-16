@@ -10,12 +10,19 @@ if (!fs.existsSync(uploadsDirectory)) {
   fs.mkdirSync(uploadsDirectory, { recursive: true });
 }
 
-const allowedMimeTypes = new Set([
+const allowedImageMimeTypes = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
   'image/svg+xml',
+]);
+
+const allowedProofMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
 ]);
 
 const extensionByMimeType: Record<string, string> = {
@@ -24,11 +31,38 @@ const extensionByMimeType: Record<string, string> = {
   'image/webp': '.webp',
   'image/gif': '.gif',
   'image/svg+xml': '.svg',
+  'application/pdf': '.pdf',
 };
 
-const cloudinaryCloudName = process.env.CLOUDINARY_CLOUD_NAME?.trim();
-const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY?.trim();
-const cloudinaryApiSecret = process.env.CLOUDINARY_API_SECRET?.trim();
+const cloudinaryUrl = process.env.CLOUDINARY_URL?.trim();
+const parseCloudinaryUrl = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(value);
+
+    if (parsedUrl.protocol !== 'cloudinary:') {
+      return null;
+    }
+
+    return {
+      cloudName: parsedUrl.hostname || undefined,
+      apiKey: parsedUrl.username || undefined,
+      apiSecret: parsedUrl.password || undefined,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const parsedCloudinaryUrl = parseCloudinaryUrl(cloudinaryUrl);
+const cloudinaryCloudName =
+  process.env.CLOUDINARY_CLOUD_NAME?.trim() || parsedCloudinaryUrl?.cloudName;
+const cloudinaryApiKey = process.env.CLOUDINARY_API_KEY?.trim() || parsedCloudinaryUrl?.apiKey;
+const cloudinaryApiSecret =
+  process.env.CLOUDINARY_API_SECRET?.trim() || parsedCloudinaryUrl?.apiSecret;
 const cloudinaryBaseFolder = process.env.CLOUDINARY_FOLDER?.trim();
 const isCloudinaryConfigured = Boolean(
   cloudinaryCloudName && cloudinaryApiKey && cloudinaryApiSecret
@@ -41,6 +75,10 @@ if (isCloudinaryConfigured) {
     api_secret: cloudinaryApiSecret,
     secure: true,
   });
+} else if (cloudinaryUrl || cloudinaryCloudName || cloudinaryApiKey || cloudinaryApiSecret) {
+  console.warn(
+    '[upload] Configuration Cloudinary incomplète, bascule vers le stockage local /uploads.'
+  );
 }
 
 const sanitizeSegment = (value: string) =>
@@ -76,7 +114,25 @@ export const imageUpload = multer({
     fileSize: 5 * 1024 * 1024,
   },
   fileFilter: (_req, file, callback) => {
-    if (!allowedMimeTypes.has(file.mimetype)) {
+    if (!allowedImageMimeTypes.has(file.mimetype)) {
+      callback(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname));
+      return;
+    }
+
+    callback(null, true);
+  },
+});
+
+export const paymentProofUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, callback) => {
+    const originalExtension = path.extname(file.originalname).toLowerCase();
+    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.pdf']);
+
+    if (!allowedProofMimeTypes.has(file.mimetype) || !allowedExtensions.has(originalExtension)) {
       callback(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file.fieldname));
       return;
     }
@@ -90,6 +146,7 @@ const uploadBufferToCloudinary = (
   options: {
     folder?: string;
     publicId: string;
+    resourceType?: 'image' | 'raw';
   }
 ) =>
   new Promise<{ secure_url: string; public_id: string }>((resolve, reject) => {
@@ -97,7 +154,7 @@ const uploadBufferToCloudinary = (
       {
         folder: options.folder,
         public_id: options.publicId,
-        resource_type: 'image',
+        resource_type: options.resourceType ?? 'image',
       },
       (error, result) => {
         if (error || !result) {
@@ -140,6 +197,67 @@ export const storeUploadedImage = async (req: Request, file: Express.Multer.File
     url: buildUploadedFileUrl(req, fileName),
     storageProvider: 'local' as const,
   };
+};
+
+export const storeUploadedProof = async (req: Request, file: Express.Multer.File) => {
+  const fileName = createStoredFilename(req, file);
+
+  if (isCloudinaryConfigured) {
+    const publicId = path.parse(fileName).name;
+    const folder = [cloudinaryBaseFolder, getSafeFolder(req)].filter(Boolean).join('/');
+    const result = await uploadBufferToCloudinary(file.buffer, {
+      folder: folder || undefined,
+      publicId,
+      resourceType: file.mimetype === 'application/pdf' ? 'raw' : 'image',
+    });
+
+    return {
+      fileName: result.public_id,
+      publicId: result.public_id,
+      url: result.secure_url,
+      storageProvider: 'cloudinary' as const,
+    };
+  }
+
+  await fs.promises.writeFile(path.resolve(uploadsDirectory, fileName), file.buffer);
+
+  return {
+    fileName,
+    publicId: fileName,
+    url: buildUploadedFileUrl(req, fileName),
+    storageProvider: 'local' as const,
+  };
+};
+
+export const deleteStoredAsset = async (target?: {
+  publicId?: string | null;
+  fileUrl?: string | null;
+  mimeType?: string | null;
+}) => {
+  if (!target?.publicId && !target?.fileUrl) {
+    return;
+  }
+
+  if (isCloudinaryConfigured && target.publicId) {
+    const publicId = target.publicId;
+    const resourceType = target.mimeType === 'application/pdf' ? 'raw' : 'image';
+
+    await cloudinary.uploader.destroy(publicId, {
+      resource_type: resourceType,
+      invalidate: true,
+    });
+    return;
+  }
+
+  if (target.fileUrl) {
+    const parsedUrl = new URL(target.fileUrl, 'http://localhost');
+    const fileName = path.basename(parsedUrl.pathname);
+    const localPath = path.resolve(uploadsDirectory, fileName);
+
+    if (fs.existsSync(localPath)) {
+      await fs.promises.unlink(localPath);
+    }
+  }
 };
 
 export const buildUploadedFileUrl = (req: Request, filename: string) => {
