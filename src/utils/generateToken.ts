@@ -56,9 +56,9 @@ export const generateAccessToken = (userId: string) => {
 };
 
 // Générer un token de rafraîchissement
-export const generateRefreshToken = (userId: string) => {
+export const generateRefreshToken = (userId: string, sessionId?: string) => {
   return jwt.sign(
-    { userId },
+    { userId, ...(sessionId ? { sessionId } : {}) },
     process.env.JWT_REFRESH_SECRET as string,
     { expiresIn: refreshTokenExpiresIn }
   );

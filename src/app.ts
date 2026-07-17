@@ -14,6 +14,8 @@ import newsRoutes from './routes/news.routes.js';
 import beneficiaryRoutes from './routes/beneficiary.routes.js';
 import siteContentRoutes from './routes/site-content.routes.js';
 import userRoutes from './routes/user.routes.js';
+import adminProfileRoutes from './routes/admin-profile.routes.js';
+import adminManagementRoutes from './routes/admin-management.routes.js';
 import moduleDonationRoutes from './modules/donations/donation.routes.js';
 import paymentRoutes from './modules/payments/payment.routes.js';
 import { getUploadsDirectory } from './utils/uploads-directory.js';
@@ -50,8 +52,10 @@ app.use(
   })
 );
 app.use(morgan('dev'));
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true }));
+// The content editor sends a large nested JSON document for the whole public site.
+// 10kb is too restrictive and causes body-parser to throw before the route handler runs.
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
 app.use('/uploads', express.static(uploadsDirectory));
 
@@ -71,6 +75,8 @@ app.use('/api/site-content', siteContentRoutes);
 app.use('/api', moduleDonationRoutes);
 app.use('/api', paymentRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/admin/profile', adminProfileRoutes);
+app.use('/api/admin', adminManagementRoutes);
 
 app.get('/', (_req, res) => {
   res.json({
@@ -83,6 +89,12 @@ app.use('*', (_req, res) => {
 });
 
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({
+      message: 'Le contenu envoyé dépasse la taille maximale autorisée.',
+    });
+  }
+
   console.error(err.stack);
   res.status(500).json({ message: 'Erreur serveur interne' });
 });

@@ -14,6 +14,8 @@ process.env.JWT_REFRESH_EXPIRE = '7d';
 process.env.COOKIE_SAME_SITE = 'lax';
 process.env.DONATIONS_ALLOW_GUESTS = 'true';
 process.env.PUBLIC_BACKEND_URL = 'http://localhost:5001';
+process.env.CLIENT_URL = 'http://localhost:5173';
+process.env.PASSWORD_RESET_TOKEN_EXPIRES_MINUTES = '30';
 
 const uploadsDirectory = path.resolve(process.cwd(), 'uploads');
 
@@ -25,6 +27,7 @@ type LoadedModules = {
   PaymentProof: any;
   PaymentTransaction: any;
   PaymentMethodSetting: any;
+  PasswordResetToken: any;
   generateAccessToken: (userId: string) => string;
 };
 
@@ -107,7 +110,7 @@ before(async () => {
   process.env.MONGODB_URI = mongoServer.getUri();
   await mongoose.connect(process.env.MONGODB_URI);
 
-  const [{ default: app }, userModule, campaignModule, donationModule, proofModule, transactionModule, methodModule, tokenModule] =
+  const [{ default: app }, userModule, campaignModule, donationModule, proofModule, transactionModule, methodModule, passwordResetTokenModule, tokenModule] =
     await Promise.all([
       import('../src/app.js'),
       import('../src/models/User.model.js'),
@@ -116,6 +119,7 @@ before(async () => {
       import('../src/modules/payments/payment-proof.model.js'),
       import('../src/modules/payments/payment-transaction.model.js'),
       import('../src/modules/payments/payment-method.model.js'),
+      import('../src/models/PasswordResetToken.model.js'),
       import('../src/utils/generateToken.js'),
     ]);
 
@@ -127,6 +131,7 @@ before(async () => {
     PaymentProof: proofModule.default,
     PaymentTransaction: transactionModule.default,
     PaymentMethodSetting: methodModule.default,
+    PasswordResetToken: passwordResetTokenModule.default,
     generateAccessToken: tokenModule.generateAccessToken,
   };
 });
@@ -156,6 +161,61 @@ it('returns an access token in the login response payload', async () => {
   assert.equal(response.body.user.email, user.email);
   assert.equal(typeof response.body.accessToken, 'string');
   assert.ok(response.body.accessToken.length > 20);
+});
+
+describe('Admin forgot password', () => {
+  it('returns a generic response and stores a hashed reset token for an active administrator', async () => {
+    const admin = await createUser('super_admin');
+
+    const response = await request(modules.app).post('/api/auth/admin/forgot-password').send({
+      email: admin.email,
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, {
+      success: true,
+      message: 'Si un compte correspondant existe, un lien de réinitialisation a été envoyé.',
+    });
+
+    const tokens = await modules.PasswordResetToken.find({ userId: admin._id });
+    assert.equal(tokens.length, 1);
+    assert.equal(tokens[0].purpose, 'ADMIN_PASSWORD_RESET');
+    assert.equal(tokens[0].usedAt, null);
+    assert.equal(tokens[0].revokedAt, null);
+    assert.equal(tokens[0].tokenHash.length, 64);
+  });
+
+  it('returns the same generic response for an unknown email without creating a token', async () => {
+    const response = await request(modules.app).post('/api/auth/admin/forgot-password').send({
+      email: 'unknown-admin@example.com',
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, {
+      success: true,
+      message: 'Si un compte correspondant existe, un lien de réinitialisation a été envoyé.',
+    });
+
+    const tokens = await modules.PasswordResetToken.find();
+    assert.equal(tokens.length, 0);
+  });
+
+  it('returns the same generic response for a non-admin account without creating a token', async () => {
+    const user = await createUser('user');
+
+    const response = await request(modules.app).post('/api/auth/admin/forgot-password').send({
+      email: user.email,
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, {
+      success: true,
+      message: 'Si un compte correspondant existe, un lien de réinitialisation a été envoyé.',
+    });
+
+    const tokens = await modules.PasswordResetToken.find({ userId: user._id });
+    assert.equal(tokens.length, 0);
+  });
 });
 
 describe('Donation and payment module', () => {
