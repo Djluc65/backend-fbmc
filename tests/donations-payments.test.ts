@@ -144,6 +144,20 @@ after(async () => {
   await cleanUploadsDirectory();
 });
 
+it('returns an access token in the login response payload', async () => {
+  const user = await createUser('admin');
+
+  const response = await request(modules.app).post('/api/auth/login').send({
+    email: user.email,
+    password: 'secret123',
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.user.email, user.email);
+  assert.equal(typeof response.body.accessToken, 'string');
+  assert.ok(response.body.accessToken.length > 20);
+});
+
 describe('Donation and payment module', () => {
   it('creates a PayPal donation with PENDING status', async () => {
     const { response } = await createDonation({

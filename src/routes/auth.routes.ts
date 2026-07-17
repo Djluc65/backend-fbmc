@@ -28,6 +28,11 @@ const serializeUser = (user: any) => ({
   createdBy: user.createdBy ?? null,
 });
 
+const serializeAuthResponse = (user: any, accessToken: string) => ({
+  user: serializeUser(user),
+  accessToken,
+});
+
 // @desc    Créer le premier administrateur
 // @route   POST /api/auth/bootstrap-admin
 // @access  Public (une seule fois)
@@ -58,7 +63,7 @@ router.post('/bootstrap-admin', async (req, res) => {
 
     return res.status(201).json({
       message: 'Administrateur initial créé avec succès',
-      user: serializeUser(user),
+      ...serializeAuthResponse(user, accessToken),
     });
   } catch (error) {
     return res.status(400).json({ message: 'Impossible de créer l’administrateur initial', error });
@@ -89,7 +94,7 @@ router.post('/register', async (req, res) => {
       const accessToken = generateAccessToken(getUserId(user));
       const refreshToken = generateRefreshToken(getUserId(user));
       sendTokens(res, accessToken, refreshToken);
-      return res.status(201).json(serializeUser(user));
+      return res.status(201).json(serializeAuthResponse(user, accessToken));
     }
   } catch (error) {
     res.status(400).json({ message: 'Données invalides', error });
@@ -111,7 +116,7 @@ router.post('/login', async (req, res) => {
       const accessToken = generateAccessToken(getUserId(user));
       const refreshToken = generateRefreshToken(getUserId(user));
       sendTokens(res, accessToken, refreshToken);
-      return res.json(serializeUser(user));
+      return res.json(serializeAuthResponse(user, accessToken));
     } else {
       return res.status(401).json({ message: 'Email ou mot de passe incorrect' });
     }
